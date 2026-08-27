@@ -1,4 +1,5 @@
 from flask import Flask
+import os
 from flask_login import LoginManager
 from flask_mail import Mail
 from flask_socketio import SocketIO
@@ -51,4 +52,6 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    debug_mode = os.environ.get("FLASK_DEBUG", "True") == "True"
+    socketio.run(app, host="0.0.0.0", port=port, debug=debug_mode, allow_unsafe_werkzeug=True)

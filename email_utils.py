@@ -20,8 +20,10 @@ def verify_token(token, salt, max_age=3600):
 
 
 def send_email(mail, subject, recipient, body):
-    """Sends an email, or if MAIL_SUPPRESS_SEND is True, prints it to console
-    so you can test the flow locally without a real mail account."""
+    """Sends an email via Brevo's HTTP API (not SMTP - cloud hosts like
+    Render block outbound SMTP traffic, but regular HTTPS requests work
+    fine). Falls back to printing to console if MAIL_SUPPRESS_SEND is True
+    or no Brevo API key is configured, so local testing still works."""
     if current_app.config.get("MAIL_SUPPRESS_SEND"):
         print("=" * 60)
         print(f"[DEV MODE] Email to: {recipient}")
@@ -29,6 +31,32 @@ def send_email(mail, subject, recipient, body):
         print(body)
         print("=" * 60)
         return
+
+    api_key = current_app.config.get("BREVO_API_KEY")
+    if api_key:
+        import requests
+
+        sender_email = current_app.config.get("MAIL_DEFAULT_SENDER")
+        sender_name = current_app.config.get("MAIL_SENDER_NAME", "Skill Share")
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "sender": {"name": sender_name, "email": sender_email},
+                "to": [{"email": recipient}],
+                "subject": subject,
+                "textContent": body,
+            },
+            timeout=10,
+        )
+        if response.status_code >= 300:
+            print(f"[BREVO ERROR] {response.status_code}: {response.text}")
+        return
+
     msg = Message(subject, recipients=[recipient], body=body)
     mail.send(msg)
 
