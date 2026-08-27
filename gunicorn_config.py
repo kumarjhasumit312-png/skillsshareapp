@@ -1,4 +1,4 @@
-bind = "127.0.0.1:5000"
+bind = "0.0.0.0:10000"
 worker_class = "gthread"
 workers = 1
 threads = 4
