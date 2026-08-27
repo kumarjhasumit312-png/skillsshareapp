@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Skill Swap{% endblock %}
+{% block content %}
+<div class="page-header">
+    <span class="eyebrow">Dashboard</span>
+    <h2>Welcome back, {{ current_user.name }}</h2>
+</div>
+
+<div class="card card--teach">
+    <h3>Your profile</h3>
+    <p><strong>Email:</strong> {{ current_user.email }}</p>
+    <p><strong>Can teach:</strong>
+        {% for s in current_user.teach_skills %}{{ s.name }}{% if not loop.last %}, {% endif %}{% else %}Not set yet{% endfor %}
+    </p>
+    <p><strong>Wants to learn:</strong>
+        {% for s in current_user.learn_skills %}{{ s.name }}{% if not loop.last %}, {% endif %}{% else %}Not set yet{% endfor %}
+    </p>
+    <a href="{{ url_for('main.skills') }}" class="btn btn-outline btn-sm">Edit skills</a>
+</div>
+
+<div class="card card--action">
+    <h3>Upcoming meetings</h3>
+    {% if upcoming_meetings %}
+        <ul class="request-list">
+        {% for m in upcoming_meetings %}
+            <li>
+                <span>Code: <span class="meta-code">{{ m.code }}</span> — {{ m.status }}</span>
+                <a href="{{ url_for('main.call_room', room=m.code) }}" class="btn btn-sm">Enter</a>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <div class="empty-state">
+            <p>No upcoming meetings yet.</p>
+            <a href="{{ url_for('meetings.meetings_home') }}">Create one</a>
+        </div>
+    {% endif %}
+</div>
+
+<div class="card card--learn">
+    <h3>Pending requests</h3>
+    {% if pending_requests %}
+        <ul class="request-list">
+        {% for req in pending_requests %}
+            <li>
+                <span><strong>{{ req.sender.name }}</strong> sent you a skill swap request</span>
+                <span class="request-actions">
+                    <form method="POST" action="{{ url_for('main.accept_request', req_id=req.id) }}" style="display:inline">
+                        <button type="submit" class="btn btn-accept btn-sm">Accept</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('main.decline_request', req_id=req.id) }}" style="display:inline">
+                        <button type="submit" class="btn btn-decline btn-sm">Decline</button>
+                    </form>
+                </span>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <div class="empty-state"><p>No pending requests right now.</p></div>
+    {% endif %}
+</div>
+{% endblock %}

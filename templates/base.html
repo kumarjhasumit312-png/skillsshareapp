@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Skill Swap{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#16213E">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('main.dashboard') }}" class="brand">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Skill Share logo" class="brand-logo">
+            Skill Share
+        </a>
+        {% if current_user.is_authenticated %}
+        <div class="nav-links">
+            <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('main.skills') }}">My Skills</a>
+            <a href="{{ url_for('main.matches') }}">Find Matches</a>
+            <a href="{{ url_for('meetings.meetings_home') }}">Meetings</a>
+            <a href="{{ url_for('feedback.feedback_home') }}">Feedback</a>
+            <a href="{{ url_for('auth.logout') }}">Logout</a>
+        </div>
+        {% endif %}
+    </nav>
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% if current_user.is_authenticated %}
+    <div id="notification-toast" class="notification-toast" style="display:none;"></div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        // Global socket connection for live notifications (new request,
+        // request accepted, etc.) and online/offline status updates.
+        // Individual pages (like call.html) create their own connection
+        // for WebRTC signaling separately.
+        const notifSocket = io();
+        const toast = document.getElementById("notification-toast");
+
+        notifSocket.on("notification", (data) => {
+            toast.textContent = data.message;
+            toast.style.display = "block";
+            setTimeout(() => { toast.style.display = "none"; }, 5000);
+        });
+    </script>
+    {% endif %}
+    <script>
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+        }
+    </script>
+</body>
+</html>

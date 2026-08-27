@@ -1,0 +1,26 @@
+# Copy relevant lines into /etc/turnserver.conf on your VM, then:
+#   sudo systemctl enable coturn
+#   sudo systemctl start coturn
+#
+# Replace YOUR_VM_PUBLIC_IP, yourdomain.com, and the username/password below.
+
+listening-port=3478
+tls-listening-port=5349
+
+listening-ip=0.0.0.0
+external-ip=YOUR_VM_PUBLIC_IP
+
+relay-ip=0.0.0.0
+min-port=49152
+max-port=65535
+
+# Simple static credential (fine for a small app). For production at scale,
+# consider time-limited credentials instead.
+user=skillswap:CHANGE_THIS_PASSWORD
+
+realm=yourdomain.com
+fingerprint
+lt-cred-mech
+
+# Once this is running, update static/js/webrtc.js iceServers with:
+# { urls: "turn:YOUR_VM_PUBLIC_IP:3478", username: "skillswap", credential: "CHANGE_THIS_PASSWORD" }

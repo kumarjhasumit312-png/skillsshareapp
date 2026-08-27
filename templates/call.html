@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Call - Skill Swap{% endblock %}
+{% block content %}
+<div class="page-header">
+    <span class="eyebrow">Meeting room</span>
+    <h2><span class="meta-code">{{ room }}</span></h2>
+</div>
+
+<div class="video-grid">
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+</div>
+
+<div class="call-controls">
+    <button id="muteBtn" class="btn">Mute</button>
+    <button id="videoBtn" class="btn">Turn Off Video</button>
+    <button id="screenShareBtn" class="btn">Share Screen</button>
+    <button id="endCallBtn" class="btn btn-decline">End Call</button>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    const ROOM = "{{ room }}";
+</script>
+<script src="{{ url_for('static', filename='js/webrtc.js') }}"></script>
+{% endblock %}

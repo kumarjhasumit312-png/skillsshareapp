@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Sign Up - Skill Swap{% endblock %}
+{% block content %}
+<div class="auth-card">
+    <div class="auth-header">
+        <svg class="swap-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 12 H24 M24 12 L19 7 M24 12 L19 17"/><path d="M26 20 H8 M8 20 L13 25 M8 20 L13 15"/></svg>
+    </div>
+    <h2>Create your account</h2>
+    <p class="auth-sub">Start trading skills with people nearby.</p>
+    <form method="POST">
+        <label>Name</label>
+        <input type="text" name="name" required>
+
+        <label>Email</label>
+        <input type="email" name="email" required>
+
+        <label>Password</label>
+        <input type="password" name="password" required>
+
+        <button type="submit" class="btn" style="width:100%">Sign up</button>
+    </form>
+    <p>Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
+</div>
+{% endblock %}

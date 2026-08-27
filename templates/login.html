@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Log In - Skill Swap{% endblock %}
+{% block content %}
+<div class="auth-card">
+    <div class="auth-header">
+        <svg class="swap-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 12 H24 M24 12 L19 7 M24 12 L19 17"/><path d="M26 20 H8 M8 20 L13 25 M8 20 L13 15"/></svg>
+    </div>
+    <h2>Log in</h2>
+    <p class="auth-sub">Pick up where you left off.</p>
+    <form method="POST">
+        <label>Email</label>
+        <input type="email" name="email" required>
+
+        <label>Password</label>
+        <input type="password" name="password" required>
+
+        <button type="submit" class="btn" style="width:100%">Log in</button>
+    </form>
+    <p><a href="{{ url_for('auth.forgot_password') }}">Forgot password?</a></p>
+    <p>Don't have an account? <a href="{{ url_for('auth.signup') }}">Sign up</a></p>
+</div>
+{% endblock %}

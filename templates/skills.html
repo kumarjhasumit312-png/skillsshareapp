@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}My Skills - Skill Swap{% endblock %}
+{% block content %}
+<div class="page-header">
+    <span class="eyebrow">Your skills</span>
+    <h2>What you teach, what you learn</h2>
+</div>
+<div class="card card--teach">
+    <form method="POST">
+        <label>Skills you can teach</label>
+        <div class="hint">Separate with commas</div>
+        <input type="text" name="teach_skills" placeholder="e.g. Python, Guitar, Photography"
+               value="{{ current_user.teach_skills | map(attribute='name') | join(', ') }}">
+
+        <label>Skills you want to learn</label>
+        <div class="hint">Separate with commas</div>
+        <input type="text" name="learn_skills" placeholder="e.g. Spanish, Cooking"
+               value="{{ current_user.learn_skills | map(attribute='name') | join(', ') }}">
+
+        <button type="submit" class="btn">Save skills</button>
+    </form>
+</div>
+{% endblock %}

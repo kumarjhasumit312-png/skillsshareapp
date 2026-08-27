@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Meetings - Skill Swap{% endblock %}
+{% block content %}
+<div class="page-header">
+    <span class="eyebrow">Meetings</span>
+    <h2>Video meetings</h2>
+</div>
+
+<div class="card card--action">
+    <h3>Start a new meeting</h3>
+    <p>Generate a code and share it with the person you're swapping skills with.</p>
+    <form method="POST" action="{{ url_for('meetings.create_meeting') }}">
+        <button type="submit" class="btn">Generate meeting code</button>
+    </form>
+</div>
+
+<div class="card card--learn">
+    <h3>Have a meeting code?</h3>
+    <form method="POST" action="{{ url_for('meetings.join_meeting') }}">
+        <label>Enter meeting code</label>
+        <input type="text" name="code" placeholder="e.g. A1B2C3" required>
+        <button type="submit" class="btn">Join meeting</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Your meetings</h3>
+    {% if meetings %}
+    <ul class="request-list">
+        {% for m in meetings %}
+        <li>
+            <span>
+                <span class="meta-code">{{ m.code }}</span> —
+                {{ m.status }} — organizer: {{ m.organizer.name }}
+                {% if m.participant %} · participant: {{ m.participant.name }}{% endif %}
+            </span>
+            <a href="{{ url_for('main.call_room', room=m.code) }}" class="btn btn-sm">Enter</a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+        <div class="empty-state"><p>No meetings yet.</p></div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+; Copy this file to /etc/systemd/system/skillswap.service on your cloud VM.
+; Then run:
+;   sudo systemctl daemon-reload
+;   sudo systemctl enable skillswap
+;   sudo systemctl start skillswap
+;
+; Replace the paths and user below with your actual VM username and project path.
+
+[Unit]
+Description=Skill Swap Flask App
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/skill-swap-app
+Environment="PATH=/home/ubuntu/skill-swap-app/venv/bin"
+ExecStart=/home/ubuntu/skill-swap-app/venv/bin/gunicorn -c gunicorn_config.py app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

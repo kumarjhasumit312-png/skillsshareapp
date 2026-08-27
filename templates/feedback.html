@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Feedback - Skill Swap{% endblock %}
+{% block content %}
+<div class="page-header">
+    <span class="eyebrow">Feedback</span>
+    <h2>Tell us how it's going</h2>
+</div>
+
+<div class="card card--action">
+    <h3>Rate your experience</h3>
+    <form method="POST">
+        <label>How would you rate Skill Swap?</label>
+        <div class="star-rating">
+            <input type="radio" id="star5" name="rating" value="5"><label for="star5" title="5 stars">★</label>
+            <input type="radio" id="star4" name="rating" value="4"><label for="star4" title="4 stars">★</label>
+            <input type="radio" id="star3" name="rating" value="3"><label for="star3" title="3 stars">★</label>
+            <input type="radio" id="star2" name="rating" value="2"><label for="star2" title="2 stars">★</label>
+            <input type="radio" id="star1" name="rating" value="1"><label for="star1" title="1 star">★</label>
+        </div>
+
+        <label>Anything you'd like to add? (optional)</label>
+        <textarea name="message" placeholder="What's working well, what's missing, what's broken..."></textarea>
+
+        <button type="submit" class="btn">Submit feedback</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Your past feedback</h3>
+    {% if history %}
+        {% for f in history %}
+        <div class="feedback-history-item">
+            <span class="date">{{ f.created_at.strftime('%d %b %Y') }}</span>
+            <span class="stars">{{ '★' * f.rating }}{{ '☆' * (5 - f.rating) }}</span>
+            {% if f.message %}<p>{{ f.message }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state"><p>You haven't left any feedback yet.</p></div>
+    {% endif %}
+</div>
+{% endblock %}

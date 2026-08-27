@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Find Matches - Skill Swap{% endblock %}
+{% block content %}
+<div class="page-header">
+    <span class="eyebrow">Matches</span>
+    <h2>People to swap with</h2>
+</div>
+
+{% if suggestions %}
+    {% for s in suggestions %}
+    <div class="card match-card card--teach">
+        <h3>{{ s.user.name }}</h3>
+        {% if s.they_can_teach_you %}
+            <div class="skill-row"><span class="tag-label">Teaches</span><span>{% for sk in s.they_can_teach_you %}{{ sk.name }}{% if not loop.last %}, {% endif %}{% endfor %}</span></div>
+        {% endif %}
+        {% if s.they_want_to_learn %}
+            <div class="skill-row"><span class="tag-label">Learning</span><span>{% for sk in s.they_want_to_learn %}{{ sk.name }}{% if not loop.last %}, {% endif %}{% endfor %}</span></div>
+        {% endif %}
+
+        {% set st = status_map.get(s.user.id) %}
+        {% if st == "pending" %}
+            <span class="badge">Request pending</span>
+        {% elif st == "accepted" %}
+            <span class="badge badge-accepted">Connected</span>
+        {% elif st == "declined" %}
+            <span class="badge badge-declined">Declined</span>
+        {% else %}
+            <form method="POST" action="{{ url_for('main.send_request', user_id=s.user.id) }}">
+                <button type="submit" class="btn btn-sm">Send request</button>
+            </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card">
+        <div class="empty-state">
+            <svg class="swap-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 12 H24 M24 12 L19 7 M24 12 L19 17"/><path d="M26 20 H8 M8 20 L13 25 M8 20 L13 15"/></svg>
+            <p>No matches yet.</p>
+            <a href="{{ url_for('main.skills') }}">Add a skill you can teach or want to learn</a> to see who's out there.
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
