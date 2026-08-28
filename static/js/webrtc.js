@@ -1,8 +1,8 @@
-// ==========================================================
-// SkillSwap 1-to-1 WebRTC Video Calling
-// Socket.IO = Signaling
+// ============================================================
+// SkillSwap - Stable 1-to-1 WebRTC
+// Flask-SocketIO = Signaling
 // STUN + TURN = NAT Traversal
-// ==========================================================
+// ============================================================
 
 const socket = io({
     transports: ["websocket", "polling"],
@@ -19,31 +19,41 @@ const videoBtn = document.getElementById("videoBtn");
 const screenShareBtn = document.getElementById("screenShareBtn");
 const endCallBtn = document.getElementById("endCallBtn");
 
+const ROOM = typeof window.ROOM !== "undefined"
+    ? window.ROOM
+    : (typeof ROOM !== "undefined" ? ROOM : null);
 
-// ==========================================================
-// IMPORTANT: STUN + TURN
-// ==========================================================
 
-const config = {
+// ============================================================
+// STUN + TURN
+// ============================================================
+
+const rtcConfig = {
     iceServers: [
         {
-            urls: "stun:stun.relay.metered.ca:80"
+            urls: [
+                "stun:stun.relay.metered.ca:80"
+            ]
         },
+
         {
             urls: "turn:global.relay.metered.ca:80",
             username: "41c8ed29a3cc3a4362f10c2d",
             credential: "UuCFfCusf019HIM1"
         },
+
         {
             urls: "turn:global.relay.metered.ca:80?transport=tcp",
             username: "41c8ed29a3cc3a4362f10c2d",
             credential: "UuCFfCusf019HIM1"
         },
+
         {
             urls: "turn:global.relay.metered.ca:443",
             username: "41c8ed29a3cc3a4362f10c2d",
             credential: "UuCFfCusf019HIM1"
         },
+
         {
             urls: "turns:global.relay.metered.ca:443?transport=tcp",
             username: "41c8ed29a3cc3a4362f10c2d",
@@ -53,254 +63,328 @@ const config = {
 };
 
 
-// ==========================================================
+// ============================================================
 // VARIABLES
-// ==========================================================
+// ============================================================
 
 let localStream = null;
 let screenStream = null;
 let peerConnection = null;
 
-let isMuted = false;
-let isVideoOff = false;
-
 let remoteDescriptionSet = false;
 let pendingIceCandidates = [];
 
+let isMuted = false;
+let isVideoOff = false;
 
-// ==========================================================
-// CHECK ROOM
-// ==========================================================
+let mediaReady = false;
+let roomJoined = false;
+let callEnded = false;
 
-if (typeof ROOM === "undefined") {
-    console.error("ROOM is not defined.");
-} else {
-    console.log("Meeting room:", ROOM);
+
+// ============================================================
+// DEBUG
+// ============================================================
+
+console.log("======================================");
+console.log("SkillSwap WebRTC starting");
+console.log("ROOM:", ROOM);
+console.log("======================================");
+
+
+// ============================================================
+// CAMERA + MICROPHONE
+// ============================================================
+
+async function getLocalMedia() {
+
+    if (mediaReady && localStream) {
+        return localStream;
+    }
+
+    console.log("Requesting camera + microphone...");
+
+    try {
+
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                width: {
+                    ideal: 1280
+                },
+                height: {
+                    ideal: 720
+                },
+                facingMode: "user"
+            },
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+
+        console.log("Camera + microphone obtained.");
+
+        if (localVideo) {
+
+            localVideo.srcObject = localStream;
+            localVideo.muted = true;
+            localVideo.autoplay = true;
+            localVideo.playsInline = true;
+
+            try {
+                await localVideo.play();
+            } catch (error) {
+                console.warn("Local video autoplay:", error);
+            }
+        }
+
+        mediaReady = true;
+
+        return localStream;
+
+    } catch (error) {
+
+        console.error("getUserMedia failed:", error);
+
+        alert(
+            "Camera aur microphone permission allow karo.\n\n" +
+            "Agar permission pehle deny ki thi to browser settings me jaakar Camera aur Microphone Allow karo."
+        );
+
+        throw error;
+    }
 }
 
 
-// ==========================================================
-// SOCKET CONNECT
-// ==========================================================
-
-socket.on("connect", () => {
-
-    console.log("=================================");
-    console.log("SOCKET.IO CONNECTED");
-    console.log("Socket ID:", socket.id);
-    console.log("ROOM:", ROOM);
-    console.log("=================================");
-
-    socket.emit("join", {
-        room: ROOM
-    });
-});
-
-
-// ==========================================================
-// SOCKET DISCONNECT
-// ==========================================================
-
-socket.on("disconnect", reason => {
-
-    console.warn(
-        "Socket.IO disconnected:",
-        reason
-    );
-
-});
-
-
-// ==========================================================
-// SOCKET ERROR
-// ==========================================================
-
-socket.on("connect_error", error => {
-
-    console.error(
-        "Socket.IO connection error:",
-        error
-    );
-
-});
-
-
-// ==========================================================
+// ============================================================
 // CREATE PEER CONNECTION
-// ==========================================================
+// ============================================================
 
 function createPeerConnection() {
 
-    console.log(
-        "Creating RTCPeerConnection..."
-    );
+    if (peerConnection) {
+        console.log("PeerConnection already exists.");
+        return peerConnection;
+    }
 
-    peerConnection =
-        new RTCPeerConnection(config);
+    console.log("Creating RTCPeerConnection...");
+
+    peerConnection = new RTCPeerConnection(rtcConfig);
+
+    remoteDescriptionSet = false;
+    pendingIceCandidates = [];
 
 
-    // ======================================================
-    // LOCAL ICE CANDIDATE
-    // ======================================================
+    // --------------------------------------------------------
+    // LOCAL ICE
+    // --------------------------------------------------------
 
-    peerConnection.onicecandidate = event => {
+    peerConnection.onicecandidate = (event) => {
 
         if (!event.candidate) {
             return;
         }
 
         console.log(
-            "Sending ICE:",
+            "Sending ICE candidate:",
             event.candidate.candidate
         );
 
         socket.emit("signal", {
-
             room: ROOM,
-
             type: "ice-candidate",
-
             candidate: event.candidate
-
         });
     };
 
 
-    // ======================================================
-    // REMOTE VIDEO
-    // ======================================================
+    // --------------------------------------------------------
+    // REMOTE MEDIA
+    // --------------------------------------------------------
 
-    peerConnection.ontrack = event => {
-
-        console.log(
-            "================================="
-        );
+    peerConnection.ontrack = async (event) => {
 
         console.log(
-            "REMOTE TRACK RECEIVED"
+            "REMOTE TRACK RECEIVED:",
+            event.track.kind
         );
 
-        console.log(
-            "================================="
-        );
+        let remoteStream;
 
-        if (
-            event.streams &&
-            event.streams[0]
-        ) {
+        if (event.streams && event.streams[0]) {
 
-            remoteVideo.srcObject =
-                event.streams[0];
+            remoteStream = event.streams[0];
 
-            remoteVideo.autoplay = true;
-            remoteVideo.playsInline = true;
+        } else {
 
-            remoteVideo.play().catch(error => {
+            if (!remoteVideo.srcObject) {
+                remoteVideo.srcObject = new MediaStream();
+            }
 
-                console.warn(
-                    "Remote video play:",
-                    error
+            remoteStream = remoteVideo.srcObject;
+
+            const exists = remoteStream
+                .getTracks()
+                .some(track => track.id === event.track.id);
+
+            if (!exists) {
+                remoteStream.addTrack(event.track);
+            }
+        }
+
+        if (remoteVideo.srcObject !== remoteStream) {
+            remoteVideo.srcObject = remoteStream;
+        }
+
+        remoteVideo.autoplay = true;
+        remoteVideo.playsInline = true;
+        remoteVideo.muted = false;
+        remoteVideo.volume = 1.0;
+
+        try {
+            await remoteVideo.play();
+            console.log("REMOTE VIDEO/AUDIO PLAYING");
+        } catch (error) {
+
+            console.warn(
+                "Remote video autoplay blocked:",
+                error
+            );
+
+            // Try again after user interaction.
+            const playRemote = async () => {
+
+                try {
+                    await remoteVideo.play();
+                } catch (e) {
+                    console.warn("Remote play retry failed:", e);
+                }
+
+                document.removeEventListener(
+                    "click",
+                    playRemote
                 );
 
-            });
+                document.removeEventListener(
+                    "touchstart",
+                    playRemote
+                );
+            };
+
+            document.addEventListener(
+                "click",
+                playRemote,
+                { once: true }
+            );
+
+            document.addEventListener(
+                "touchstart",
+                playRemote,
+                { once: true }
+            );
         }
     };
 
 
-    // ======================================================
-    // ICE STATE
-    // ======================================================
+    // --------------------------------------------------------
+    // ICE CONNECTION STATE
+    // --------------------------------------------------------
 
     peerConnection.oniceconnectionstatechange = () => {
 
         console.log(
-            "ICE state:",
+            "ICE connection state:",
             peerConnection.iceConnectionState
         );
 
         if (
-            peerConnection.iceConnectionState ===
-            "connected"
+            peerConnection.iceConnectionState === "connected" ||
+            peerConnection.iceConnectionState === "completed"
         ) {
 
             console.log(
-                "ICE CONNECTED"
+                "======================================"
             );
-
-        }
-
-        if (
-            peerConnection.iceConnectionState ===
-            "completed"
-        ) {
 
             console.log(
-                "ICE COMPLETED"
+                "WEBRTC ICE CONNECTED"
             );
 
+            console.log(
+                "======================================"
+            );
         }
 
         if (
-            peerConnection.iceConnectionState ===
-            "failed"
+            peerConnection.iceConnectionState === "failed"
         ) {
 
             console.error(
-                "ICE FAILED"
+                "ICE CONNECTION FAILED"
             );
 
+            // Try ICE restart if possible.
+            restartIce();
         }
-
     };
 
 
-    // ======================================================
+    // --------------------------------------------------------
     // CONNECTION STATE
-    // ======================================================
+    // --------------------------------------------------------
 
     peerConnection.onconnectionstatechange = () => {
 
         console.log(
-            "WebRTC state:",
+            "WebRTC connection state:",
             peerConnection.connectionState
         );
 
         if (
-            peerConnection.connectionState ===
-            "connected"
+            peerConnection.connectionState === "connected"
         ) {
 
             console.log(
-                "================================="
+                "======================================"
             );
 
             console.log(
-                "WEBRTC CALL CONNECTED"
+                "VIDEO CALL CONNECTED"
             );
 
             console.log(
-                "================================="
+                "AUDIO + VIDEO SHOULD NOW WORK"
             );
 
+            console.log(
+                "======================================"
+            );
         }
 
         if (
-            peerConnection.connectionState ===
-            "failed"
+            peerConnection.connectionState === "failed"
         ) {
 
             console.error(
                 "WEBRTC CONNECTION FAILED"
             );
-
         }
 
+        if (
+            peerConnection.connectionState === "disconnected"
+        ) {
+
+            console.warn(
+                "WebRTC temporarily disconnected."
+            );
+        }
     };
 
 
-    // ======================================================
+    // --------------------------------------------------------
     // SIGNALING STATE
-    // ======================================================
+    // --------------------------------------------------------
 
     peerConnection.onsignalingstatechange = () => {
 
@@ -308,358 +392,397 @@ function createPeerConnection() {
             "Signaling state:",
             peerConnection.signalingState
         );
-
     };
 
 
-    // ======================================================
-    // ADD LOCAL CAMERA + MICROPHONE
-    // ======================================================
+    // --------------------------------------------------------
+    // ADD CAMERA + MICROPHONE TRACKS
+    // --------------------------------------------------------
 
-    if (localStream) {
+    if (!localStream) {
 
-        localStream
-            .getTracks()
-            .forEach(track => {
+        console.error(
+            "Cannot add local tracks because localStream is missing."
+        );
 
-                console.log(
-                    "Adding local track:",
-                    track.kind
-                );
-
-                peerConnection.addTrack(
-                    track,
-                    localStream
-                );
-
-            });
-
+        return peerConnection;
     }
+
+    localStream.getTracks().forEach((track) => {
+
+        console.log(
+            "Adding local track:",
+            track.kind,
+            track.id
+        );
+
+        peerConnection.addTrack(
+            track,
+            localStream
+        );
+    });
+
+
+    console.log(
+        "Local camera + microphone tracks added."
+    );
 
     return peerConnection;
 }
 
 
-// ==========================================================
-// CAMERA + MICROPHONE
-// ==========================================================
+// ============================================================
+// JOIN ROOM
+// IMPORTANT:
+// We ONLY join Socket.IO room AFTER camera/mic + PeerConnection
+// are ready. This fixes the race condition.
+// ============================================================
 
-async function init() {
+async function joinMeetingRoom() {
+
+    if (roomJoined) {
+        return;
+    }
+
+    if (!ROOM) {
+
+        console.error(
+            "ROOM is missing."
+        );
+
+        return;
+    }
 
     try {
 
-        console.log(
-            "Starting camera and microphone..."
-        );
+        await getLocalMedia();
 
-        localStream =
-            await navigator.mediaDevices.getUserMedia({
-
-                video: true,
-
-                audio: true
-
-            });
-
-
-        // Local video
-        if (localVideo) {
-
-            localVideo.srcObject =
-                localStream;
-
-            localVideo.autoplay = true;
-            localVideo.muted = true;
-            localVideo.playsInline = true;
-
-            await localVideo.play().catch(() => {});
-
+        if (!peerConnection) {
+            createPeerConnection();
         }
 
+        if (!socket.connected) {
+
+            console.log(
+                "Socket not connected yet. Waiting..."
+            );
+
+            return;
+        }
 
         console.log(
-            "Camera + microphone ready."
+            "Everything ready. Joining room:",
+            ROOM
         );
 
+        socket.emit("join", {
+            room: ROOM
+        });
 
-        // Create WebRTC connection
-        createPeerConnection();
+        roomJoined = true;
 
+        console.log(
+            "ROOM JOINED:",
+            ROOM
+        );
 
     } catch (error) {
 
         console.error(
-            "getUserMedia ERROR:",
+            "Could not join meeting:",
             error
         );
-
-        alert(
-            "Camera aur microphone permission allow karo."
-        );
-
     }
-
 }
 
 
-// ==========================================================
+// ============================================================
+// SOCKET CONNECT
+// ============================================================
+
+socket.on("connect", async () => {
+
+    console.log(
+        "======================================"
+    );
+
+    console.log(
+        "SOCKET.IO CONNECTED"
+    );
+
+    console.log(
+        "Socket ID:",
+        socket.id
+    );
+
+    console.log(
+        "======================================"
+    );
+
+    await joinMeetingRoom();
+});
+
+
+// ============================================================
+// SOCKET DISCONNECT
+// ============================================================
+
+socket.on("disconnect", (reason) => {
+
+    console.warn(
+        "Socket disconnected:",
+        reason
+    );
+
+    roomJoined = false;
+});
+
+
+// ============================================================
+// SOCKET ERROR
+// ============================================================
+
+socket.on("connect_error", (error) => {
+
+    console.error(
+        "Socket.IO connection error:",
+        error
+    );
+});
+
+
+// ============================================================
 // OTHER USER JOINED
-// ==========================================================
+// ONLY EXISTING USER RECEIVES THIS
+// EXISTING USER CREATES OFFER
+// ============================================================
 
-socket.on(
-    "user_joined",
-    async data => {
+socket.on("user_joined", async (data) => {
 
-        console.log(
-            "================================="
-        );
+    console.log(
+        "======================================"
+    );
 
-        console.log(
-            "OTHER USER JOINED"
-        );
+    console.log(
+        "OTHER USER JOINED"
+    );
 
-        console.log(
-            data
-        );
+    console.log(
+        data
+    );
 
-        console.log(
-            "================================="
-        );
+    console.log(
+        "======================================"
+    );
 
+    try {
 
-        try {
+        await getLocalMedia();
 
-            if (!peerConnection) {
-
-                createPeerConnection();
-
-            }
-
-
-            // Existing user creates OFFER
-            console.log(
-                "Creating OFFER..."
-            );
-
-
-            const offer =
-                await peerConnection.createOffer();
-
-
-            await peerConnection.setLocalDescription(
-                offer
-            );
-
-
-            console.log(
-                "Sending OFFER..."
-            );
-
-
-            socket.emit(
-                "signal",
-                {
-
-                    room: ROOM,
-
-                    type: "offer",
-
-                    offer: offer
-
-                }
-            );
-
-
-        } catch (error) {
-
-            console.error(
-                "Offer error:",
-                error
-            );
-
+        if (!peerConnection) {
+            createPeerConnection();
         }
 
-    }
-);
-
-
-// ==========================================================
-// SIGNAL
-// ==========================================================
-
-socket.on(
-    "signal",
-    async data => {
+        // Wait until tracks are definitely present.
+        const senders = peerConnection.getSenders();
 
         console.log(
-            "SIGNAL:",
-            data.type
+            "Number of senders:",
+            senders.length
         );
 
+        console.log(
+            "Creating OFFER..."
+        );
 
-        try {
+        const offer = await peerConnection.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
 
-            if (!peerConnection) {
+        await peerConnection.setLocalDescription(offer);
 
-                createPeerConnection();
+        console.log(
+            "Sending OFFER..."
+        );
 
-            }
+        socket.emit("signal", {
+            room: ROOM,
+            type: "offer",
+            offer: peerConnection.localDescription
+        });
 
+    } catch (error) {
 
-            // =================================================
-            // OFFER
-            // =================================================
-
-            if (data.type === "offer") {
-
-                console.log(
-                    "Receiving OFFER..."
-                );
-
-
-                await peerConnection.setRemoteDescription(
-
-                    new RTCSessionDescription(
-                        data.offer
-                    )
-
-                );
-
-
-                remoteDescriptionSet = true;
+        console.error(
+            "Offer creation failed:",
+            error
+        );
+    }
+});
 
 
-                await flushPendingIceCandidates();
+// ============================================================
+// SIGNAL
+// OFFER / ANSWER / ICE
+// ============================================================
+
+socket.on("signal", async (data) => {
+
+    console.log(
+        "SIGNAL RECEIVED:",
+        data.type
+    );
+
+    try {
+
+        await getLocalMedia();
+
+        if (!peerConnection) {
+            createPeerConnection();
+        }
 
 
-                console.log(
-                    "Remote OFFER set."
-                );
+        // ----------------------------------------------------
+        // OFFER
+        // ----------------------------------------------------
+
+        if (data.type === "offer") {
+
+            console.log(
+                "Receiving OFFER..."
+            );
+
+            await peerConnection.setRemoteDescription(
+                new RTCSessionDescription(data.offer)
+            );
+
+            remoteDescriptionSet = true;
+
+            console.log(
+                "Remote OFFER set."
+            );
 
 
-                const answer =
-                    await peerConnection.createAnswer();
+            await flushPendingIceCandidates();
 
 
-                await peerConnection.setLocalDescription(
-                    answer
-                );
+            console.log(
+                "Creating ANSWER..."
+            );
+
+            const answer = await peerConnection.createAnswer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
+
+            await peerConnection.setLocalDescription(answer);
 
 
-                console.log(
-                    "Sending ANSWER..."
-                );
+            console.log(
+                "Sending ANSWER..."
+            );
+
+            socket.emit("signal", {
+                room: ROOM,
+                type: "answer",
+                answer: peerConnection.localDescription
+            });
+
+            return;
+        }
 
 
-                socket.emit(
-                    "signal",
-                    {
+        // ----------------------------------------------------
+        // ANSWER
+        // ----------------------------------------------------
 
-                        room: ROOM,
+        if (data.type === "answer") {
 
-                        type: "answer",
+            console.log(
+                "Receiving ANSWER..."
+            );
 
-                        answer: answer
-
-                    }
-                );
-
-            }
-
-
-            // =================================================
-            // ANSWER
-            // =================================================
-
-            else if (data.type === "answer") {
-
-                console.log(
-                    "Receiving ANSWER..."
-                );
-
-
-                await peerConnection.setRemoteDescription(
-
-                    new RTCSessionDescription(
-                        data.answer
-                    )
-
-                );
-
-
-                remoteDescriptionSet = true;
-
-
-                await flushPendingIceCandidates();
-
-
-                console.log(
-                    "Remote ANSWER set."
-                );
-
-            }
-
-
-            // =================================================
-            // ICE CANDIDATE
-            // =================================================
-
-            else if (
-                data.type === "ice-candidate"
+            if (
+                peerConnection.signalingState !==
+                "have-local-offer"
             ) {
 
-                const candidate =
-                    new RTCIceCandidate(
-                        data.candidate
-                    );
+                console.warn(
+                    "Ignoring answer because signaling state is:",
+                    peerConnection.signalingState
+                );
 
-
-                if (
-                    !remoteDescriptionSet ||
-                    !peerConnection.remoteDescription
-                ) {
-
-                    console.log(
-                        "Queueing ICE candidate..."
-                    );
-
-
-                    pendingIceCandidates.push(
-                        candidate
-                    );
-
-                } else {
-
-                    console.log(
-                        "Adding ICE candidate..."
-                    );
-
-
-                    await peerConnection
-                        .addIceCandidate(
-                            candidate
-                        );
-
-                }
-
+                return;
             }
 
-        } catch (error) {
-
-            console.error(
-                "SIGNAL ERROR:",
-                error
+            await peerConnection.setRemoteDescription(
+                new RTCSessionDescription(data.answer)
             );
 
+            remoteDescriptionSet = true;
+
+            console.log(
+                "Remote ANSWER set."
+            );
+
+            await flushPendingIceCandidates();
+
+            return;
         }
 
+
+        // ----------------------------------------------------
+        // ICE CANDIDATE
+        // ----------------------------------------------------
+
+        if (data.type === "ice-candidate") {
+
+            if (!data.candidate) {
+                return;
+            }
+
+            const candidate =
+                new RTCIceCandidate(data.candidate);
+
+            if (
+                !remoteDescriptionSet ||
+                !peerConnection.remoteDescription
+            ) {
+
+                console.log(
+                    "Queueing ICE candidate."
+                );
+
+                pendingIceCandidates.push(candidate);
+
+            } else {
+
+                console.log(
+                    "Adding ICE candidate."
+                );
+
+                await peerConnection.addIceCandidate(
+                    candidate
+                );
+            }
+
+            return;
+        }
+
+    } catch (error) {
+
+        console.error(
+            "SIGNAL HANDLING ERROR:",
+            error
+        );
     }
-);
+});
 
 
-// ==========================================================
-// FLUSH ICE
-// ==========================================================
+// ============================================================
+// FLUSH QUEUED ICE CANDIDATES
+// ============================================================
 
 async function flushPendingIceCandidates() {
 
@@ -671,17 +794,17 @@ async function flushPendingIceCandidates() {
         return;
     }
 
-
     console.log(
-        "Flushing ICE candidates:",
+        "Flushing queued ICE:",
         pendingIceCandidates.length
     );
 
+    const candidates =
+        [...pendingIceCandidates];
 
-    for (
-        const candidate
-        of pendingIceCandidates
-    ) {
+    pendingIceCandidates = [];
+
+    for (const candidate of candidates) {
 
         try {
 
@@ -692,139 +815,147 @@ async function flushPendingIceCandidates() {
         } catch (error) {
 
             console.error(
-                "ICE candidate error:",
+                "Queued ICE candidate failed:",
                 error
             );
-
         }
-
     }
-
-
-    pendingIceCandidates = [];
-
 }
 
 
-// ==========================================================
-// USER LEFT
-// ==========================================================
+// ============================================================
+// ICE RESTART
+// ============================================================
 
-socket.on(
-    "user_left",
-    () => {
+async function restartIce() {
+
+    if (!peerConnection) {
+        return;
+    }
+
+    if (
+        peerConnection.signalingState === "closed"
+    ) {
+        return;
+    }
+
+    try {
 
         console.log(
-            "Other user left."
+            "Attempting ICE restart..."
         );
 
+        const offer =
+            await peerConnection.createOffer({
+                iceRestart: true
+            });
 
-        if (remoteVideo) {
+        await peerConnection.setLocalDescription(
+            offer
+        );
 
-            remoteVideo.srcObject = null;
+        socket.emit("signal", {
+            room: ROOM,
+            type: "offer",
+            offer: peerConnection.localDescription
+        });
 
-        }
+    } catch (error) {
 
-
-        if (peerConnection) {
-
-            peerConnection.close();
-
-            peerConnection = null;
-
-        }
-
-
-        remoteDescriptionSet = false;
-
-        pendingIceCandidates = [];
-
+        console.error(
+            "ICE restart failed:",
+            error
+        );
     }
-);
+}
 
 
-// ==========================================================
-// MUTE
-// ==========================================================
+// ============================================================
+// USER LEFT
+// ============================================================
+
+socket.on("user_left", () => {
+
+    console.log(
+        "Other user left the meeting."
+    );
+
+    if (remoteVideo) {
+        remoteVideo.srcObject = null;
+    }
+
+    if (peerConnection) {
+
+        peerConnection.close();
+
+        peerConnection = null;
+    }
+
+    remoteDescriptionSet = false;
+    pendingIceCandidates = [];
+
+});
+
+
+// ============================================================
+// MUTE / UNMUTE
+// ============================================================
 
 if (muteBtn) {
 
-    muteBtn.addEventListener(
-        "click",
-        () => {
+    muteBtn.addEventListener("click", () => {
 
-            if (!localStream) {
-                return;
-            }
-
-
-            isMuted = !isMuted;
-
-
-            localStream
-                .getAudioTracks()
-                .forEach(track => {
-
-                    track.enabled =
-                        !isMuted;
-
-                });
-
-
-            muteBtn.textContent =
-                isMuted
-                    ? "Unmute"
-                    : "Mute";
-
+        if (!localStream) {
+            return;
         }
-    );
 
+        isMuted = !isMuted;
+
+        localStream
+            .getAudioTracks()
+            .forEach((track) => {
+                track.enabled = !isMuted;
+            });
+
+        muteBtn.textContent =
+            isMuted
+                ? "Unmute"
+                : "Mute";
+    });
 }
 
 
-// ==========================================================
-// CAMERA ON/OFF
-// ==========================================================
+// ============================================================
+// CAMERA ON / OFF
+// ============================================================
 
 if (videoBtn) {
 
-    videoBtn.addEventListener(
-        "click",
-        () => {
+    videoBtn.addEventListener("click", () => {
 
-            if (!localStream) {
-                return;
-            }
-
-
-            isVideoOff =
-                !isVideoOff;
-
-
-            localStream
-                .getVideoTracks()
-                .forEach(track => {
-
-                    track.enabled =
-                        !isVideoOff;
-
-                });
-
-
-            videoBtn.textContent =
-                isVideoOff
-                    ? "Turn On Video"
-                    : "Turn Off Video";
-
+        if (!localStream) {
+            return;
         }
-    );
 
+        isVideoOff = !isVideoOff;
+
+        localStream
+            .getVideoTracks()
+            .forEach((track) => {
+                track.enabled = !isVideoOff;
+            });
+
+        videoBtn.textContent =
+            isVideoOff
+                ? "Turn On Video"
+                : "Turn Off Video";
+    });
 }
 
 
-// ==========================================================
+// ============================================================
 // SCREEN SHARE
-// ==========================================================
+// ============================================================
 
 if (screenShareBtn) {
 
@@ -837,166 +968,139 @@ if (screenShareBtn) {
                 if (!peerConnection) {
 
                     console.warn(
-                        "Peer connection not ready."
+                        "PeerConnection not ready."
                     );
 
                     return;
-
                 }
 
-
                 screenStream =
-                    await navigator.mediaDevices
-                        .getDisplayMedia({
-
-                            video: true,
-
-                            audio: false
-
-                        });
-
+                    await navigator.mediaDevices.getDisplayMedia({
+                        video: true,
+                        audio: false
+                    });
 
                 const screenTrack =
-                    screenStream
-                        .getVideoTracks()[0];
-
+                    screenStream.getVideoTracks()[0];
 
                 const sender =
                     peerConnection
                         .getSenders()
                         .find(
-                            s =>
+                            (s) =>
                                 s.track &&
-                                s.track.kind ===
-                                "video"
+                                s.track.kind === "video"
                         );
 
+                if (!sender) {
 
-                if (sender) {
-
-                    await sender.replaceTrack(
-                        screenTrack
+                    console.error(
+                        "Video sender not found."
                     );
 
+                    return;
                 }
 
+                await sender.replaceTrack(
+                    screenTrack
+                );
 
                 localVideo.srcObject =
                     screenStream;
-
 
                 screenTrack.onended =
                     async () => {
 
                         const cameraTrack =
                             localStream
-                                .getVideoTracks()[0];
+                                ? localStream.getVideoTracks()[0]
+                                : null;
 
-
-                        if (
-                            sender &&
-                            cameraTrack
-                        ) {
+                        if (cameraTrack) {
 
                             await sender.replaceTrack(
                                 cameraTrack
                             );
 
+                            localVideo.srcObject =
+                                localStream;
                         }
 
-
-                        localVideo.srcObject =
-                            localStream;
-
-
                         screenStream = null;
-
                     };
-
 
             } catch (error) {
 
                 console.error(
-                    "Screen share error:",
+                    "Screen share failed:",
                     error
                 );
-
             }
-
         }
     );
-
 }
 
 
-// ==========================================================
+// ============================================================
 // END CALL
-// ==========================================================
+// ============================================================
 
 function endCall() {
+
+    callEnded = true;
 
     console.log(
         "Ending call..."
     );
 
+    // Tell other user.
+    if (socket.connected) {
+
+        socket.emit("leave", {
+            room: ROOM
+        });
+    }
 
     if (localStream) {
 
         localStream
             .getTracks()
-            .forEach(track => {
-
+            .forEach((track) => {
                 track.stop();
-
             });
-
     }
-
 
     if (screenStream) {
 
         screenStream
             .getTracks()
-            .forEach(track => {
-
+            .forEach((track) => {
                 track.stop();
-
             });
-
     }
-
 
     if (peerConnection) {
 
         peerConnection.close();
 
         peerConnection = null;
-
     }
-
 
     if (localVideo) {
-
         localVideo.srcObject = null;
-
     }
-
 
     if (remoteVideo) {
-
         remoteVideo.srcObject = null;
-
     }
 
-
     socket.disconnect();
-
 }
 
 
-// ==========================================================
+// ============================================================
 // END CALL BUTTON
-// ==========================================================
+// ============================================================
 
 if (endCallBtn) {
 
@@ -1008,29 +1112,41 @@ if (endCallBtn) {
 
             window.location.href =
                 "/dashboard";
-
         }
     );
-
 }
 
 
-// ==========================================================
+// ============================================================
 // START
-// ==========================================================
+// ============================================================
 
-if (
-    document.readyState ===
-    "loading"
-) {
+async function start() {
 
-    document.addEventListener(
-        "DOMContentLoaded",
-        init
-    );
+    try {
 
-} else {
+        // IMPORTANT:
+        // Camera/mic first.
+        // PeerConnection second.
+        // Socket room join third.
 
-    init();
+        await getLocalMedia();
 
+        createPeerConnection();
+
+        if (socket.connected) {
+
+            await joinMeetingRoom();
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Meeting startup failed:",
+            error
+        );
+    }
 }
+
+start();
