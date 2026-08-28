@@ -4,49 +4,187 @@ from flask_login import current_user
 
 def register_socket_events(socketio):
 
+    # ==========================================================
+    # SOCKET CONNECT
+    # ==========================================================
+
     @socketio.on("connect")
     def handle_connect():
-        # Every logged-in user gets their own personal room (user_<id>),
-        # so we can push notifications straight to them from anywhere
-        # in the app (e.g. when someone sends them a request).
+
+        print(
+            f"[Socket] Connected: "
+            f"user={current_user.id if current_user.is_authenticated else 'guest'}"
+        )
+
         if current_user.is_authenticated:
-            join_room(f"user_{current_user.id}")
-            emit("status_update", {"user_id": current_user.id, "status": "online"},
-                 broadcast=True, include_self=False)
+
+            join_room(
+                f"user_{current_user.id}"
+            )
+
+            emit(
+                "status_update",
+                {
+                    "user_id": current_user.id,
+                    "status": "online"
+                },
+                broadcast=True,
+                include_self=False
+            )
+
+
+    # ==========================================================
+    # SOCKET DISCONNECT
+    # ==========================================================
 
     @socketio.on("disconnect")
     def handle_disconnect():
+
+        print(
+            f"[Socket] Disconnected: "
+            f"user={current_user.id if current_user.is_authenticated else 'guest'}"
+        )
+
         if current_user.is_authenticated:
-            emit("status_update", {"user_id": current_user.id, "status": "offline"},
-                 broadcast=True, include_self=False)
+
+            emit(
+                "status_update",
+                {
+                    "user_id": current_user.id,
+                    "status": "offline"
+                },
+                broadcast=True,
+                include_self=False
+            )
+
+
+    # ==========================================================
+    # JOIN VIDEO MEETING
+    # ==========================================================
 
     @socketio.on("join")
     def handle_join(data):
+
         room = data.get("room")
+
+        if not room:
+            print("[WebRTC] Join rejected: no room")
+            return
+
+        print(
+            f"[WebRTC] User "
+            f"{current_user.id if current_user.is_authenticated else 'guest'} "
+            f"joining room: {room}"
+        )
+
         join_room(room)
-        # tell the other person in the room someone joined
-        emit("user_joined", {"name": current_user.name if current_user.is_authenticated else "Guest"},
-             room=room, include_self=False)
+
+        # Tell ONLY the other user.
+        # The existing user will create the OFFER.
+        emit(
+            "user_joined",
+            {
+                "name": (
+                    current_user.name
+                    if current_user.is_authenticated
+                    else "Guest"
+                )
+            },
+            room=room,
+            include_self=False
+        )
+
+        print(
+            f"[WebRTC] Join notification sent for room: {room}"
+        )
+
+
+    # ==========================================================
+    # WEBRTC SIGNALING
+    # OFFER / ANSWER / ICE
+    # ==========================================================
 
     @socketio.on("signal")
     def handle_signal(data):
-        # relay WebRTC offer/answer/ICE candidates to the other peer in the room
+
         room = data.get("room")
-        emit("signal", data, room=room, include_self=False)
+        signal_type = data.get("type")
+
+        if not room:
+            print(
+                "[WebRTC] Signal rejected: no room"
+            )
+            return
+
+        if not signal_type:
+            print(
+                "[WebRTC] Signal rejected: no type"
+            )
+            return
+
+        print(
+            f"[WebRTC] Relaying signal: "
+            f"type={signal_type}, room={room}"
+        )
+
+        # Send signal ONLY to the other participant.
+        emit(
+            "signal",
+            data,
+            room=room,
+            include_self=False
+        )
+
+
+    # ==========================================================
+    # LEAVE MEETING
+    # ==========================================================
 
     @socketio.on("leave")
     def handle_leave(data):
+
         room = data.get("room")
+
+        if not room:
+            return
+
+        print(
+            f"[WebRTC] User leaving room: {room}"
+        )
+
         leave_room(room)
-        emit("user_left", {}, room=room, include_self=False)
+
+        emit(
+            "user_left",
+            {},
+            room=room,
+            include_self=False
+        )
+
+
+    # ==========================================================
+    # STATUS UPDATE
+    # ==========================================================
 
     @socketio.on("status_update")
     def handle_status_update(data):
-        # broadcast a user's online/offline/in-call status
-        emit("status_update", data, broadcast=True, include_self=False)
 
+        emit(
+            "status_update",
+            data,
+            broadcast=True,
+            include_self=False
+        )
+
+
+# ==============================================================
+# NOTIFICATION HELPER
+# ==============================================================
 
 def notify_user(socketio, user_id, payload):
-    """Push a live notification to one specific user's personal room.
-    Call this from routes.py (e.g. after a match request is sent/accepted)."""
-    socketio.emit("notification", payload, room=f"user_{user_id}")
+
+    socketio.emit(
+        "notification",
+        payload,
+        room=f"user_{user_id}"
+    )
