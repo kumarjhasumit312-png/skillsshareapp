@@ -54,6 +54,5 @@
     window.ROOM = {{ room|tojson }};
 </script>
 
-<script src="{{ url_for('static', filename='js/webrtc.js') }}"></script>
-
+<script src="{{ url_for('static', filename='js/webrtc.js') }}?v=2"></script>
 {% endblock %}
