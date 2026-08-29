@@ -20,15 +20,12 @@ const videoBtn = document.getElementById("videoBtn");
 const screenShareBtn = document.getElementById("screenShareBtn");
 const endCallBtn = document.getElementById("endCallBtn");
 
-const ROOM =
-    typeof window.ROOM !== "undefined"
-        ? window.ROOM
-        : (typeof ROOM !== "undefined" ? ROOM : null);
+const ROOM = window.ROOM || null;
 
 
 // ============================================================
 // STUN + TURN
-// KEEPING YOUR WORKING CREDENTIALS
+// YOUR EXISTING WORKING CREDENTIALS
 // ============================================================
 
 const rtcConfig = {
@@ -68,12 +65,12 @@ let mediaReady = false;
 let roomJoined = false;
 let callEnded = false;
 
-// IMPORTANT: negotiation protection
+// Negotiation protection
 let makingOffer = false;
 let processingOffer = false;
 let processingAnswer = false;
 
-// Prevent duplicate join notifications
+// Prevent duplicate offers
 let offerSentForCurrentJoin = false;
 
 // ICE restart protection
@@ -199,19 +196,6 @@ function createPeerConnection() {
 
 
     // --------------------------------------------------------
-    // ICE GATHERING STATE
-    // --------------------------------------------------------
-
-    peerConnection.onicegatheringstatechange = () => {
-
-        console.log(
-            "ICE gathering state:",
-            peerConnection.iceGatheringState
-        );
-    };
-
-
-    // --------------------------------------------------------
     // REMOTE MEDIA
     // --------------------------------------------------------
 
@@ -271,14 +255,13 @@ function createPeerConnection() {
                 error
             );
 
-            // Browser autoplay fallback.
-            // User interaction will start the media.
-
             const playRemote = async () => {
 
                 try {
                     await remoteVideo.play();
-                    console.log("Remote media started after user interaction.");
+                    console.log(
+                        "Remote media started after user interaction."
+                    );
                 } catch (e) {
                     console.warn(
                         "Remote play retry failed:",
@@ -344,8 +327,8 @@ function createPeerConnection() {
                 "ICE temporarily disconnected."
             );
 
-            // Do NOT immediately restart ICE.
-            // A temporary disconnect can recover itself.
+            // Do not immediately restart.
+            // Temporary disconnect can recover.
         }
 
         if (state === "failed") {
@@ -461,7 +444,6 @@ function createPeerConnection() {
 async function joinMeetingRoom() {
 
     if (roomJoined) {
-        console.log("Already joined room.");
         return;
     }
 
@@ -537,8 +519,6 @@ socket.on("connect", async () => {
         return;
     }
 
-    // New Socket.IO connection.
-    // Allow one fresh room join.
     roomJoined = false;
     offerSentForCurrentJoin = false;
 
@@ -558,10 +538,6 @@ socket.on("disconnect", (reason) => {
     );
 
     roomJoined = false;
-
-    // Important:
-    // Do not destroy peerConnection here.
-    // Socket.IO may reconnect automatically.
 });
 
 
@@ -594,22 +570,20 @@ socket.on("user_joined", async (data) => {
         return;
     }
 
-    // Prevent duplicate user_joined events from
-    // creating multiple offers.
+    // Prevent duplicate user_joined events
     if (offerSentForCurrentJoin) {
 
         console.warn(
-            "Offer already sent for this room join. Ignoring duplicate user_joined."
+            "Offer already sent. Ignoring duplicate user_joined."
         );
 
         return;
     }
 
-    // Prevent simultaneous offer creation.
     if (makingOffer) {
 
         console.warn(
-            "Already creating an offer. Ignoring duplicate user_joined."
+            "Already creating an offer."
         );
 
         return;
@@ -632,13 +606,13 @@ socket.on("user_joined", async (data) => {
             createPeerConnection();
         }
 
-        // Only create an offer from STABLE state.
+        // OFFER must only be created from stable state.
         if (
             peerConnection.signalingState !== "stable"
         ) {
 
             console.warn(
-                "PeerConnection not stable. Current state:",
+                "PeerConnection is not stable:",
                 peerConnection.signalingState
             );
 
@@ -656,16 +630,15 @@ socket.on("user_joined", async (data) => {
             "Creating OFFER..."
         );
 
-        const offer = await peerConnection.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-        });
+        const offer =
+            await peerConnection.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
 
-        if (!peerConnection) {
-            return;
-        }
-
-        await peerConnection.setLocalDescription(offer);
+        await peerConnection.setLocalDescription(
+            offer
+        );
 
         console.log(
             "Local OFFER set."
@@ -734,8 +707,7 @@ socket.on("signal", async (data) => {
                 "Receiving OFFER..."
             );
 
-            // Ignore duplicate offer if we are already
-            // processing another offer.
+            // Do not process two offers simultaneously.
             if (processingOffer) {
 
                 console.warn(
@@ -745,8 +717,7 @@ socket.on("signal", async (data) => {
                 return;
             }
 
-            // If we already have a local offer, do not
-            // overwrite it with another offer.
+            // Do not overwrite an active local offer.
             if (
                 peerConnection.signalingState !== "stable"
             ) {
@@ -822,8 +793,7 @@ socket.on("signal", async (data) => {
                 "Receiving ANSWER..."
             );
 
-            // Only the peer which created the offer
-            // can accept the answer.
+            // Only accept answer when our offer is active.
             if (
                 peerConnection.signalingState !==
                 "have-local-offer"
@@ -884,8 +854,6 @@ socket.on("signal", async (data) => {
             const candidate =
                 new RTCIceCandidate(data.candidate);
 
-            // Remote SDP has not arrived yet.
-            // Queue candidate.
             if (
                 !remoteDescriptionSet ||
                 !peerConnection.remoteDescription
@@ -945,15 +913,6 @@ async function flushPendingIceCandidates() {
         return;
     }
 
-    if (pendingIceCandidates.length === 0) {
-
-        console.log(
-            "Flushing queued ICE: 0"
-        );
-
-        return;
-    }
-
     console.log(
         "Flushing queued ICE:",
         pendingIceCandidates.length
@@ -1001,8 +960,11 @@ function scheduleIceRestart() {
         return;
     }
 
-    // Do not restart while another negotiation is happening.
-    if (makingOffer || processingOffer || processingAnswer) {
+    if (
+        makingOffer ||
+        processingOffer ||
+        processingAnswer
+    ) {
 
         console.warn(
             "ICE restart postponed because negotiation is busy."
@@ -1017,7 +979,7 @@ function scheduleIceRestart() {
 
     const now = Date.now();
 
-    // Prevent repeated ICE restarts.
+    // Don't restart repeatedly within 10 seconds.
     if (
         now - lastIceRestartTime < 10000
     ) {
@@ -1029,7 +991,6 @@ function scheduleIceRestart() {
         return;
     }
 
-    // Only restart from stable state.
     if (
         peerConnection.signalingState !== "stable"
     ) {
@@ -1072,7 +1033,6 @@ async function restartIce() {
     if (
         peerConnection.signalingState === "closed"
     ) {
-
         return;
     }
 
@@ -1401,21 +1361,12 @@ async function start() {
 
     try {
 
-        if (callEnded) {
-            return;
-        }
-
-        // Camera/mic first.
         await getLocalMedia();
 
-        // PeerConnection second.
         createPeerConnection();
 
-        // Socket room join third.
         if (socket.connected) {
-
             await joinMeetingRoom();
-
         }
 
     } catch (error) {
