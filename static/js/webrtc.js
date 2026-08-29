@@ -25,28 +25,23 @@ const ROOM = typeof window.ROOM !== "undefined"
 
 
 // ============================================================
-// STUN + TURN (OpenRelay - Free, No Card Required)
+// STUN + TURN (ExpressTURN - Free, No Card Required)
 // ============================================================
 
 const rtcConfig = {
     iceServers: [
         {
-            urls: "stun:openrelay.metered.ca:80"
+            urls: "stun:free.expressturn.com:3478"
         },
         {
-            urls: "turn:openrelay.metered.ca:80",
-            username: "openrelayproject",
-            credential: "openrelayproject"
+            urls: "turn:free.expressturn.com:3478?transport=udp",
+            username: "0000000002103368970",
+            credential: "PO46DCtC1zTOP21ZixuEoyebRF0="
         },
         {
-            urls: "turn:openrelay.metered.ca:443",
-            username: "openrelayproject",
-            credential: "openrelayproject"
-        },
-        {
-            urls: "turn:openrelay.metered.ca:443?transport=tcp",
-            username: "openrelayproject",
-            credential: "openrelayproject"
+            urls: "turn:free.expressturn.com:3478?transport=tcp",
+            username: "0000000002103368970",
+            credential: "PO46DCtC1zTOP21ZixuEoyebRF0="
         }
     ]
 };
