@@ -25,39 +25,28 @@ const ROOM = typeof window.ROOM !== "undefined"
 
 
 // ============================================================
-// STUN + TURN
+// STUN + TURN (OpenRelay - Free, No Card Required)
 // ============================================================
 
 const rtcConfig = {
     iceServers: [
         {
-            urls: [
-                "stun:stun.relay.metered.ca:80"
-            ]
+            urls: "stun:openrelay.metered.ca:80"
         },
-
         {
-            urls: "turn:global.relay.metered.ca:80",
-            username: "41c8ed29a3cc3a4362f10c2d",
-            credential: "UuCFfCusf019HIM1"
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject"
         },
-
         {
-            urls: "turn:global.relay.metered.ca:80?transport=tcp",
-            username: "41c8ed29a3cc3a4362f10c2d",
-            credential: "UuCFfCusf019HIM1"
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject"
         },
-
         {
-            urls: "turn:global.relay.metered.ca:443",
-            username: "41c8ed29a3cc3a4362f10c2d",
-            credential: "UuCFfCusf019HIM1"
-        },
-
-        {
-            urls: "turns:global.relay.metered.ca:443?transport=tcp",
-            username: "41c8ed29a3cc3a4362f10c2d",
-            credential: "UuCFfCusf019HIM1"
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject"
         }
     ]
 };
