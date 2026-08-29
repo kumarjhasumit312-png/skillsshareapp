@@ -1,4 +1,3 @@
-```javascript
 // ============================================================
 // SkillSwap - Stable 1-to-1 WebRTC
 // Flask-SocketIO = Signaling
@@ -20,12 +19,13 @@ const videoBtn = document.getElementById("videoBtn");
 const screenShareBtn = document.getElementById("screenShareBtn");
 const endCallBtn = document.getElementById("endCallBtn");
 
-const ROOM = window.ROOM || null;
+const ROOM = typeof window.ROOM !== "undefined"
+    ? window.ROOM
+    : (typeof ROOM !== "undefined" ? ROOM : null);
 
 
 // ============================================================
-// STUN + TURN
-// YOUR EXISTING WORKING CREDENTIALS
+// STUN + TURN (ExpressTURN - NEW CREDENTIALS)
 // ============================================================
 
 const rtcConfig = {
@@ -35,13 +35,13 @@ const rtcConfig = {
         },
         {
             urls: "turn:free.expressturn.com:3478?transport=udp",
-            username: "0000000002103368970",
-            credential: "PO46DCtC1zTOP21ZixuEoyebRF0="
+            username: "000000002103376257",
+            credential: "G5hmjCkXEgCMTxxP9w7uiKvCQvw="
         },
         {
             urls: "turn:free.expressturn.com:3478?transport=tcp",
-            username: "0000000002103368970",
-            credential: "PO46DCtC1zTOP21ZixuEoyebRF0="
+            username: "000000002103376257",
+            credential: "G5hmjCkXEgCMTxxP9w7uiKvCQvw="
         }
     ]
 };
@@ -65,17 +65,7 @@ let mediaReady = false;
 let roomJoined = false;
 let callEnded = false;
 
-// Negotiation protection
-let makingOffer = false;
-let processingOffer = false;
-let processingAnswer = false;
-
-// Prevent duplicate offers
-let offerSentForCurrentJoin = false;
-
-// ICE restart protection
-let iceRestartInProgress = false;
-let lastIceRestartTime = 0;
+let connectionTimeout = null;
 
 
 // ============================================================
@@ -171,6 +161,18 @@ function createPeerConnection() {
     remoteDescriptionSet = false;
     pendingIceCandidates = [];
 
+    // Connection timeout for mobile networks
+    connectionTimeout = setTimeout(() => {
+        if (peerConnection && 
+            peerConnection.iceConnectionState !== "connected" &&
+            peerConnection.iceConnectionState !== "completed") {
+            
+            console.warn("Connection timeout - forcing ICE restart");
+            restartIce();
+        }
+    }, 15000);
+
+
     // --------------------------------------------------------
     // LOCAL ICE
     // --------------------------------------------------------
@@ -178,7 +180,6 @@ function createPeerConnection() {
     peerConnection.onicecandidate = (event) => {
 
         if (!event.candidate) {
-            console.log("ICE gathering completed.");
             return;
         }
 
@@ -205,10 +206,6 @@ function createPeerConnection() {
             "REMOTE TRACK RECEIVED:",
             event.track.kind
         );
-
-        if (!remoteVideo) {
-            return;
-        }
 
         let remoteStream;
 
@@ -243,11 +240,8 @@ function createPeerConnection() {
         remoteVideo.volume = 1.0;
 
         try {
-
             await remoteVideo.play();
-
             console.log("REMOTE VIDEO/AUDIO PLAYING");
-
         } catch (error) {
 
             console.warn(
@@ -259,15 +253,19 @@ function createPeerConnection() {
 
                 try {
                     await remoteVideo.play();
-                    console.log(
-                        "Remote media started after user interaction."
-                    );
                 } catch (e) {
-                    console.warn(
-                        "Remote play retry failed:",
-                        e
-                    );
+                    console.warn("Remote play retry failed:", e);
                 }
+
+                document.removeEventListener(
+                    "click",
+                    playRemote
+                );
+
+                document.removeEventListener(
+                    "touchstart",
+                    playRemote
+                );
             };
 
             document.addEventListener(
@@ -291,53 +289,44 @@ function createPeerConnection() {
 
     peerConnection.oniceconnectionstatechange = () => {
 
-        if (!peerConnection) {
-            return;
-        }
-
-        const state = peerConnection.iceConnectionState;
-
         console.log(
             "ICE connection state:",
-            state
+            peerConnection.iceConnectionState
         );
 
         if (
-            state === "connected" ||
-            state === "completed"
+            peerConnection.iceConnectionState === "connected" ||
+            peerConnection.iceConnectionState === "completed"
         ) {
 
-            console.log("======================================");
-            console.log("WEBRTC ICE CONNECTED");
-            console.log("======================================");
-
-            iceRestartInProgress = false;
-        }
-
-        if (state === "checking") {
+            // Clear timeout on successful connection
+            if (connectionTimeout) {
+                clearTimeout(connectionTimeout);
+                connectionTimeout = null;
+            }
 
             console.log(
-                "ICE is checking available network paths..."
+                "======================================"
+            );
+
+            console.log(
+                "WEBRTC ICE CONNECTED"
+            );
+
+            console.log(
+                "======================================"
             );
         }
 
-        if (state === "disconnected") {
-
-            console.warn(
-                "ICE temporarily disconnected."
-            );
-
-            // Do not immediately restart.
-            // Temporary disconnect can recover.
-        }
-
-        if (state === "failed") {
+        if (
+            peerConnection.iceConnectionState === "failed"
+        ) {
 
             console.error(
                 "ICE CONNECTION FAILED"
             );
 
-            scheduleIceRestart();
+            restartIce();
         }
     };
 
@@ -348,35 +337,44 @@ function createPeerConnection() {
 
     peerConnection.onconnectionstatechange = () => {
 
-        if (!peerConnection) {
-            return;
-        }
-
-        const state = peerConnection.connectionState;
-
         console.log(
             "WebRTC connection state:",
-            state
+            peerConnection.connectionState
         );
 
-        if (state === "connected") {
+        if (
+            peerConnection.connectionState === "connected"
+        ) {
 
-            console.log("======================================");
-            console.log("VIDEO CALL CONNECTED");
-            console.log("AUDIO + VIDEO SHOULD NOW WORK");
-            console.log("======================================");
+            console.log(
+                "======================================"
+            );
+
+            console.log(
+                "VIDEO CALL CONNECTED"
+            );
+
+            console.log(
+                "AUDIO + VIDEO SHOULD NOW WORK"
+            );
+
+            console.log(
+                "======================================"
+            );
         }
 
-        if (state === "failed") {
+        if (
+            peerConnection.connectionState === "failed"
+        ) {
 
             console.error(
                 "WEBRTC CONNECTION FAILED"
             );
-
-            scheduleIceRestart();
         }
 
-        if (state === "disconnected") {
+        if (
+            peerConnection.connectionState === "disconnected"
+        ) {
 
             console.warn(
                 "WebRTC temporarily disconnected."
@@ -390,10 +388,6 @@ function createPeerConnection() {
     // --------------------------------------------------------
 
     peerConnection.onsignalingstatechange = () => {
-
-        if (!peerConnection) {
-            return;
-        }
 
         console.log(
             "Signaling state:",
@@ -429,6 +423,7 @@ function createPeerConnection() {
         );
     });
 
+
     console.log(
         "Local camera + microphone tracks added."
     );
@@ -439,11 +434,13 @@ function createPeerConnection() {
 
 // ============================================================
 // JOIN ROOM
+// FIXED: Only join once, after everything is ready
 // ============================================================
 
 async function joinMeetingRoom() {
 
     if (roomJoined) {
+        console.log("Already joined room, skipping.");
         return;
     }
 
@@ -453,10 +450,6 @@ async function joinMeetingRoom() {
             "ROOM is missing."
         );
 
-        return;
-    }
-
-    if (callEnded) {
         return;
     }
 
@@ -487,7 +480,6 @@ async function joinMeetingRoom() {
         });
 
         roomJoined = true;
-        offerSentForCurrentJoin = false;
 
         console.log(
             "ROOM JOINED:",
@@ -510,17 +502,22 @@ async function joinMeetingRoom() {
 
 socket.on("connect", async () => {
 
-    console.log("======================================");
-    console.log("SOCKET.IO CONNECTED");
-    console.log("Socket ID:", socket.id);
-    console.log("======================================");
+    console.log(
+        "======================================"
+    );
 
-    if (callEnded) {
-        return;
-    }
+    console.log(
+        "SOCKET.IO CONNECTED"
+    );
 
-    roomJoined = false;
-    offerSentForCurrentJoin = false;
+    console.log(
+        "Socket ID:",
+        socket.id
+    );
+
+    console.log(
+        "======================================"
+    );
 
     await joinMeetingRoom();
 });
@@ -556,47 +553,25 @@ socket.on("connect_error", (error) => {
 
 // ============================================================
 // OTHER USER JOINED
-// EXISTING USER CREATES OFFER
 // ============================================================
 
 socket.on("user_joined", async (data) => {
 
-    console.log("======================================");
-    console.log("OTHER USER JOINED");
-    console.log(data);
-    console.log("======================================");
+    console.log(
+        "======================================"
+    );
 
-    if (callEnded) {
-        return;
-    }
+    console.log(
+        "OTHER USER JOINED"
+    );
 
-    // Prevent duplicate user_joined events
-    if (offerSentForCurrentJoin) {
+    console.log(
+        data
+    );
 
-        console.warn(
-            "Offer already sent. Ignoring duplicate user_joined."
-        );
-
-        return;
-    }
-
-    if (makingOffer) {
-
-        console.warn(
-            "Already creating an offer."
-        );
-
-        return;
-    }
-
-    if (!socket.connected) {
-
-        console.warn(
-            "Socket disconnected. Cannot create offer."
-        );
-
-        return;
-    }
+    console.log(
+        "======================================"
+    );
 
     try {
 
@@ -606,45 +581,23 @@ socket.on("user_joined", async (data) => {
             createPeerConnection();
         }
 
-        // OFFER must only be created from stable state.
-        if (
-            peerConnection.signalingState !== "stable"
-        ) {
-
-            console.warn(
-                "PeerConnection is not stable:",
-                peerConnection.signalingState
-            );
-
-            return;
-        }
-
-        makingOffer = true;
+        const senders = peerConnection.getSenders();
 
         console.log(
             "Number of senders:",
-            peerConnection.getSenders().length
+            senders.length
         );
 
         console.log(
             "Creating OFFER..."
         );
 
-        const offer =
-            await peerConnection.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true
-            });
+        const offer = await peerConnection.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
 
-        await peerConnection.setLocalDescription(
-            offer
-        );
-
-        console.log(
-            "Local OFFER set."
-        );
-
-        offerSentForCurrentJoin = true;
+        await peerConnection.setLocalDescription(offer);
 
         console.log(
             "Sending OFFER..."
@@ -662,19 +615,12 @@ socket.on("user_joined", async (data) => {
             "Offer creation failed:",
             error
         );
-
-        offerSentForCurrentJoin = false;
-
-    } finally {
-
-        makingOffer = false;
     }
 });
 
 
 // ============================================================
 // SIGNAL
-// OFFER / ANSWER / ICE
 // ============================================================
 
 socket.on("signal", async (data) => {
@@ -683,10 +629,6 @@ socket.on("signal", async (data) => {
         "SIGNAL RECEIVED:",
         data.type
     );
-
-    if (callEnded) {
-        return;
-    }
 
     try {
 
@@ -697,9 +639,9 @@ socket.on("signal", async (data) => {
         }
 
 
-        // ====================================================
+        // ----------------------------------------------------
         // OFFER
-        // ====================================================
+        // ----------------------------------------------------
 
         if (data.type === "offer") {
 
@@ -707,85 +649,49 @@ socket.on("signal", async (data) => {
                 "Receiving OFFER..."
             );
 
-            // Do not process two offers simultaneously.
-            if (processingOffer) {
+            await peerConnection.setRemoteDescription(
+                new RTCSessionDescription(data.offer)
+            );
 
-                console.warn(
-                    "Already processing an OFFER. Ignoring duplicate."
-                );
+            remoteDescriptionSet = true;
 
-                return;
-            }
+            console.log(
+                "Remote OFFER set."
+            );
 
-            // Do not overwrite an active local offer.
-            if (
-                peerConnection.signalingState !== "stable"
-            ) {
 
-                console.warn(
-                    "Ignoring OFFER because signaling state is:",
-                    peerConnection.signalingState
-                );
+            await flushPendingIceCandidates();
 
-                return;
-            }
 
-            processingOffer = true;
+            console.log(
+                "Creating ANSWER..."
+            );
 
-            try {
+            const answer = await peerConnection.createAnswer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
 
-                await peerConnection.setRemoteDescription(
-                    new RTCSessionDescription(data.offer)
-                );
+            await peerConnection.setLocalDescription(answer);
 
-                remoteDescriptionSet = true;
 
-                console.log(
-                    "Remote OFFER set."
-                );
+            console.log(
+                "Sending ANSWER..."
+            );
 
-                await flushPendingIceCandidates();
-
-                console.log(
-                    "Creating ANSWER..."
-                );
-
-                const answer =
-                    await peerConnection.createAnswer({
-                        offerToReceiveAudio: true,
-                        offerToReceiveVideo: true
-                    });
-
-                await peerConnection.setLocalDescription(
-                    answer
-                );
-
-                console.log(
-                    "Local ANSWER set."
-                );
-
-                console.log(
-                    "Sending ANSWER..."
-                );
-
-                socket.emit("signal", {
-                    room: ROOM,
-                    type: "answer",
-                    answer: peerConnection.localDescription
-                });
-
-            } finally {
-
-                processingOffer = false;
-            }
+            socket.emit("signal", {
+                room: ROOM,
+                type: "answer",
+                answer: peerConnection.localDescription
+            });
 
             return;
         }
 
 
-        // ====================================================
+        // ----------------------------------------------------
         // ANSWER
-        // ====================================================
+        // ----------------------------------------------------
 
         if (data.type === "answer") {
 
@@ -793,7 +699,6 @@ socket.on("signal", async (data) => {
                 "Receiving ANSWER..."
             );
 
-            // Only accept answer when our offer is active.
             if (
                 peerConnection.signalingState !==
                 "have-local-offer"
@@ -807,43 +712,25 @@ socket.on("signal", async (data) => {
                 return;
             }
 
-            if (processingAnswer) {
+            await peerConnection.setRemoteDescription(
+                new RTCSessionDescription(data.answer)
+            );
 
-                console.warn(
-                    "Already processing an ANSWER."
-                );
+            remoteDescriptionSet = true;
 
-                return;
-            }
+            console.log(
+                "Remote ANSWER set."
+            );
 
-            processingAnswer = true;
-
-            try {
-
-                await peerConnection.setRemoteDescription(
-                    new RTCSessionDescription(data.answer)
-                );
-
-                remoteDescriptionSet = true;
-
-                console.log(
-                    "Remote ANSWER set."
-                );
-
-                await flushPendingIceCandidates();
-
-            } finally {
-
-                processingAnswer = false;
-            }
+            await flushPendingIceCandidates();
 
             return;
         }
 
 
-        // ====================================================
+        // ----------------------------------------------------
         // ICE CANDIDATE
-        // ====================================================
+        // ----------------------------------------------------
 
         if (data.type === "ice-candidate") {
 
@@ -871,19 +758,9 @@ socket.on("signal", async (data) => {
                     "Adding ICE candidate."
                 );
 
-                try {
-
-                    await peerConnection.addIceCandidate(
-                        candidate
-                    );
-
-                } catch (error) {
-
-                    console.error(
-                        "ICE candidate failed:",
-                        error
-                    );
-                }
+                await peerConnection.addIceCandidate(
+                    candidate
+                );
             }
 
             return;
@@ -943,90 +820,12 @@ async function flushPendingIceCandidates() {
 
 
 // ============================================================
-// CONTROLLED ICE RESTART
+// ICE RESTART
 // ============================================================
-
-function scheduleIceRestart() {
-
-    if (callEnded) {
-        return;
-    }
-
-    if (!peerConnection) {
-        return;
-    }
-
-    if (!socket.connected) {
-        return;
-    }
-
-    if (
-        makingOffer ||
-        processingOffer ||
-        processingAnswer
-    ) {
-
-        console.warn(
-            "ICE restart postponed because negotiation is busy."
-        );
-
-        setTimeout(() => {
-            scheduleIceRestart();
-        }, 2000);
-
-        return;
-    }
-
-    const now = Date.now();
-
-    // Don't restart repeatedly within 10 seconds.
-    if (
-        now - lastIceRestartTime < 10000
-    ) {
-
-        console.warn(
-            "ICE restart skipped: restarted recently."
-        );
-
-        return;
-    }
-
-    if (
-        peerConnection.signalingState !== "stable"
-    ) {
-
-        console.warn(
-            "ICE restart postponed. Signaling state:",
-            peerConnection.signalingState
-        );
-
-        return;
-    }
-
-    restartIce();
-}
-
 
 async function restartIce() {
 
     if (!peerConnection) {
-        return;
-    }
-
-    if (callEnded) {
-        return;
-    }
-
-    if (!socket.connected) {
-        return;
-    }
-
-    if (iceRestartInProgress) {
-
-        console.warn(
-            "ICE restart already in progress."
-        );
-
         return;
     }
 
@@ -1036,26 +835,10 @@ async function restartIce() {
         return;
     }
 
-    if (
-        peerConnection.signalingState !== "stable"
-    ) {
-
-        console.warn(
-            "Cannot restart ICE. Signaling state:",
-            peerConnection.signalingState
-        );
-
-        return;
-    }
-
     try {
 
-        iceRestartInProgress = true;
-        makingOffer = true;
-        lastIceRestartTime = Date.now();
-
         console.log(
-            "Attempting controlled ICE restart..."
+            "Attempting ICE restart..."
         );
 
         const offer =
@@ -1073,24 +856,12 @@ async function restartIce() {
             offer: peerConnection.localDescription
         });
 
-        console.log(
-            "ICE restart OFFER sent."
-        );
-
     } catch (error) {
 
         console.error(
             "ICE restart failed:",
             error
         );
-
-    } finally {
-
-        makingOffer = false;
-
-        setTimeout(() => {
-            iceRestartInProgress = false;
-        }, 3000);
     }
 }
 
@@ -1119,12 +890,6 @@ socket.on("user_left", () => {
     remoteDescriptionSet = false;
     pendingIceCandidates = [];
 
-    makingOffer = false;
-    processingOffer = false;
-    processingAnswer = false;
-
-    offerSentForCurrentJoin = false;
-    iceRestartInProgress = false;
 });
 
 
@@ -1229,12 +994,6 @@ if (screenShareBtn) {
                         "Video sender not found."
                     );
 
-                    screenStream
-                        .getTracks()
-                        .forEach(track => track.stop());
-
-                    screenStream = null;
-
                     return;
                 }
 
@@ -1330,6 +1089,11 @@ function endCall() {
         remoteVideo.srcObject = null;
     }
 
+    // Clear timeout if exists
+    if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+    }
+
     socket.disconnect();
 }
 
@@ -1355,6 +1119,7 @@ if (endCallBtn) {
 
 // ============================================================
 // START
+// FIXED: Removed duplicate joinMeetingRoom call
 // ============================================================
 
 async function start() {
@@ -1365,9 +1130,8 @@ async function start() {
 
         createPeerConnection();
 
-        if (socket.connected) {
-            await joinMeetingRoom();
-        }
+        // Socket.on("connect") will handle room join
+        // No need to call joinMeetingRoom() here
 
     } catch (error) {
 
@@ -1379,4 +1143,3 @@ async function start() {
 }
 
 start();
-```
